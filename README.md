@@ -1,7 +1,7 @@
 # OpenLDAP database backend migration script
 
 [![reuse compliant](https://reuse.software/badge/reuse-compliant.svg)](https://reuse.software/) 
-[![Trigger: Shell Check](https://github.com/DSI-Universite-Rennes2/certificate-tools/actions/workflows/main.yml/badge.svg?event=push)](https://github.com/DSI-Universite-Rennes2/certificate-tools/actions/workflows/main.yml)
+[![Trigger: Shell Check](https://github.com/DSI-Universite-Rennes2/openldap-migrate-backend/actions/workflows/main.yml/badge.svg?event=push)](https://github.com/DSI-Universite-Rennes2/openldap-migrate-backend/actions/workflows/main.yml)
 [![License: CC-BY-NC-SA-4.0](https://img.shields.io/badge/License-CC%20BY--NC--SA%204.0-blue.svg)](https://creativecommons.org/licenses/by-nc-sa/4.0/)
 
 This bash script migrate an OpenLDAP database from HDB/BDB to MDB format.
