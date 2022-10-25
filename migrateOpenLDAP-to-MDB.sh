@@ -6,9 +6,10 @@
 # License-Filename: LICENSE 
 #
 # vim: syntax=sh tabstop=4 shiftwidth=4 expandtab
+LDIR="$( cd "$( dirname "$( readlink -f "${BASH_SOURCE[0]}" )" )" >/dev/null 2>&1 && pwd -P )"
 
 echoerr() { echo "$@" 1>&2; }
-TMPDIR=$(mktemp -d -t 'certificate-tools.XXXXXX')
+TMPDIR=$(mktemp -d -t 'slapd-migrate-to-mdb.XXXXXX')
 if [[ ! "$TMPDIR" || ! -d "$TMPDIR" ]]; then
     echoerr "Could not create temp dir"
     exit 1
@@ -37,15 +38,86 @@ function command_exists () {
     command -v "$1" >/dev/null 2>&1;
 }
 
+function patchCRC32 () {
+    CRCBIN="$1"
+    PATCHFILE="$TMPDIR/check_slapdd_crc32-python.patch"
+
+cat << EOF > "$PATCHFILE"
+diff --git a/check_slapdd_crc32 b/check_slapdd_crc32
+index 0aea07c..0cc24b8 100755
+--- a/check_slapdd_crc32
++++ b/check_slapdd_crc32
+@@ -15,7 +15,7 @@ default_slapdd_path = '/etc/ldap/slapd.d'
+ 
+ # Main
+ parser = argparse.ArgumentParser(
+-    description=f'{__doc__} (version: {version})'
++    description='{} (version: {})'.format(__doc__, version)
+ )
+ 
+ parser.add_argument(
+@@ -56,7 +56,7 @@ parser.add_argument(
+     action='store',
+     type=str,
+     dest='slapdd_path',
+-    help=f'Default slapd.d directory path (default: {default_slapdd_path}',
++    help='Default slapd.d directory path (default: {}'.format(default_slapdd_path),
+     default=default_slapdd_path
+ )
+ 
+@@ -66,8 +66,9 @@ options = parser.parse_args()
+ # Initialize log
+ log = logging.getLogger()
+ logformat = logging.Formatter(
+-    f'%(asctime)s - {os.path.basename(sys.argv[0])} - %(levelname)s - '
+-    '%(message)s')
++    '%(asctime)s - {} - %(levelname)s - '
++    '%(message)s'.format(os.path.basename(sys.argv[0]))
++)
+ 
+ if options.debug:
+     log.setLevel(logging.DEBUG)
+EOF
+    patch "$CRCBIN" "$PATCHFILE"
+    if patch -s -f --dry-run "$CRCBIN" "$PATCHFILE"
+    then
+        echoerr "Patching $CRCBIN failed"
+        exit 1
+    fi
+}
+
+echo -n "Begin process : "
+date
+
 checkDependencies
 
-cd "$TMPDIR" || ( echoerr "$TMPDIR does not exists" && exit 1 )
-git clone https://gogs.zionetrix.net/bn8/check_slapdd_crc32.git
-export PATH="$PATH:$TMPDIR/check_slapdd_crc32"
-if [ ! -e "$TMPDIR/check_slapdd_crc32/check_slapdd_crc32" ]
+if ! command_exists "check_slapdd_crc32"
 then
-    echoerr "Cannot git clone check_slapdd_crc32 project"
-    exit 1
+    if [ ! -x "$LDIR/check_slapdd_crc32/check_slapdd_crc32" ]
+    then
+        cd "$TMPDIR" || ( echoerr "$TMPDIR does not exists" && exit 1 )
+        git clone https://gogs.zionetrix.net/bn8/check_slapdd_crc32.git
+        export PATH="$PATH:$TMPDIR/check_slapdd_crc32"
+        SLAPDDCRCBIN="$TMPDIR/check_slapdd_crc32/check_slapdd_crc32"
+        if [ ! -e "$TMPDIR/check_slapdd_crc32/check_slapdd_crc32" ]
+        then
+            echoerr "Cannot git clone check_slapdd_crc32 project"
+            exit 1
+        fi
+    else
+        export PATH="$PATH:/usr/local/bin"
+        SLAPDDCRCBIN="$LDIR/check_slapdd_crc32/check_slapdd_crc32"
+    fi
+else
+    PATHLIST="${PATH//:/' '}"
+    # shellcheck disable=SC2086
+    SLAPDDCRCBIN=$(whereis -b -B $PATHLIST -f check_slapdd_crc32 | awk '{print $2}')
+fi
+
+if ! python3 -c 'import sys; assert sys.version_info >= (3,6)' > /dev/null
+then
+    # Patching for python3 < 3.6 (Because Debian 9 have python 3.5)
+    patchCRC32 "$SLAPDDCRCBIN"
 fi
 
 # -------------------------------------
@@ -119,6 +191,9 @@ else
     exit 1
 fi
 
+echo -n "slapd stopped : "
+date
+
 DB_DIRECTORY=$( grep -iE '^olcDbDirectory: ' '/etc/ldap/slapd.d.new/cn=config/olcDatabase={1}mdb.ldif'|sed 's/^olcDbDirectory: //' )
 echo "DB directory: $DB_DIRECTORY"
 [ -n "$DB_DIRECTORY" ] && [ -d "$DB_DIRECTORY/" ] && \
@@ -131,3 +206,7 @@ slapadd -n 1 -q -l "$TMPDIR/ldif" && \
 chown openldap: -R "$DB_DIRECTORY" && \
 chown openldap:openldap -R /etc/ldap/slapd.d
 systemctl start slapd.service
+
+echo "slapd started : "
+date
+
