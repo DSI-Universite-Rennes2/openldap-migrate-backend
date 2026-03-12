@@ -174,8 +174,8 @@ then
 fi
 
 # Removing old backend modules if exists
-sed -i '/^olcModuleLoad:.*back_hdb.la$/d' "cn=module{0}.ldif"
-sed -i '/^olcModuleLoad:.*back_bdb.la$/d' "cn=module{0}.ldif"
+sed -i '/^olcModuleLoad:.*back_hdb\(\.la\)*$/d' "cn=module{0}.ldif"
+sed -i '/^olcModuleLoad:.*back_bdb\(\.la\)*$/d' "cn=module{0}.ldif"
 
 if slaptest -u -Q -F "/etc/ldap/slapd.d.new/"
 then
