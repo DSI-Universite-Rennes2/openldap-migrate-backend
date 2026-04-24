@@ -151,15 +151,23 @@ rsync -av /etc/ldap/slapd.d/ /etc/ldap/slapd.d.new/
 # -------------------------------------
 # migrate config BDB/HDB => MDB
 cd '/etc/ldap/slapd.d.new/cn=config' || ( echoerr '/etc/ldap/slapd.d.new/cn=config does not exists' && exit 1 )
-# HDB :
-[ -e 'olcDatabase={1}hdb.ldif' ] && mv 'olcDatabase={1}hdb.ldif' 'olcDatabase={1}mdb.ldif'
-[ -d 'olcDatabase={1}hdb' ] && mv 'olcDatabase={1}hdb' 'olcDatabase={1}mdb'
-# BDB :
-[ -e 'olcDatabase={1}bdb.ldif' ] && mv 'olcDatabase={1}bdb.ldif' 'olcDatabase={1}mdb.ldif'
-[ -d 'olcDatabase={1}bdb' ] && mv 'olcDatabase={1}bdb' 'olcDatabase={1}mdb'
 
-sed -i 's/{1}[hb]db/{1}mdb/' 'olcDatabase={1}mdb.ldif'
-sed -i 's/olc[HB]dbConfig/olcMdbConfig/g' 'olcDatabase={1}mdb.ldif'
+for dbfile in olcDatabase=\{*\}[hb]db.ldif
+do
+    [ -e "$dbfile" ] || continue
+
+    idx=$(echo "$dbfile" | sed -E 's/olcDatabase=\{([0-9]+)\}[hb]db.ldif/\1/')
+    newfile="olcDatabase={${idx}}mdb.ldif"
+
+    mv "$dbfile" "$newfile"
+
+    for d in olcDatabase=\{"${idx}"\}[hb]db; do
+        [ -d "$d" ] && mv "$d" "olcDatabase={${idx}}mdb"
+    done
+
+    sed -i "s/{${idx}}[hb]db/{${idx}}mdb/" "$newfile"
+    sed -i 's/olc[HB]dbConfig/olcMdbConfig/g' "$newfile"
+done
 
 obsoleteAttributes='olcDbCacheFree olcDbCacheSize olcDbChecksum olcDbConfig olcDbCryptFile olcDbCryptKey olcDbDNcacheSize olcDbDirtyRead olcDbIDLcacheSize olcDbLinearIndex olcDbLockDetect olcDbPageSize olcDbShmKey'
 for attr in $obsoleteAttributes
